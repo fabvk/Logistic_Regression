@@ -1,0 +1,520 @@
+---
+title: "Logistic Regression"
+author: "Fabienne van Kleef"
+date: "2023-10-26"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+I used the https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset/discussion dataset to perform logistic regression.
+
+## Load packages 
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+```
+
+
+## Assumptions 
+- Multicollinearity is not an issue
+- Homoscedasticity (equal variance among groups)
+- Overfitting
+- Independence
+
+## Research question 
+
+Null Hypothesis:
+H0: There is no association between the predictor variables (age, sex, chest pain, cholesterol, etc) and the probability of having heart disease. This means the regression coefficients for all predictors are 0.
+
+Alternative Hypothesis:
+HA: There is an association between at least one of the predictor variables and the probability of having heart disease. This means at least one regression coefficient is non-zero.
+
+In other words:
+
+H0: beta1=beta2=beta3=...=betap=0
+
+I have used Claude and Chatgpt to to aid the production of this answer 
+
+## Load data
+
+```{r}
+data <- read.csv('/Users/fab/Downloads/Assignment3DS/heart.csv')
+head(data)
+
+```
+## Binary and Factor 
+
+The data doesn't need much wrangling, so I moved on to making sure the outcome variable is binary and if it is convert it to a factor 
+
+```{r}
+# Convert 'target' to a factor if it's binary
+if (all(unique(data$target) %in% c(0, 1))) {
+  data$target <- as.factor(data$target)
+}
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+
+## Scale 
+
+As a next step I want to scale the numeric predictor variables. 
+This code standardizes all the columns in the data dataframe (except the "target" column) and then stores the standardized values in the corresponding columns of the heart dataframe.
+```{r}
+vars_to_scale <- setdiff(names(data), "target")
+data[vars_to_scale] <- scale(data[vars_to_scale])
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+```
+
+
+## Mean and Standard deviation 
+
+Next we want to get descriptive statistics for the numeric predictor variables split by the binary target variable. This calculates the mean and standard deviation for each numeric predictor, grouped by the two levels of the target variable.
+```{r}
+# Get column names of numeric predictors
+num_preds <- setdiff(names(data), c("target"))
+
+# Calculate stats grouped by target
+desc <- data %>%
+  group_by(target) %>%
+  summarise(across(all_of(num_preds), 
+                   list(mean = mean, sd = sd)))
+
+print(desc)
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+
+## Correlation matrix for numeric predictor variables 
+
+Next we want to calculate a correlation matrix for the numeric predictor variables. This subsets the data to only numeric columns, removes the target variable, and then calculates the correlation matrix using the cor() function.
+
+```{r}
+# Subset numeric predictors
+numeric_vars <- sapply(data, is.numeric)
+numeric_data <- data[numeric_vars]
+
+# Remove target if included 
+numeric_data$target <- NULL  
+
+# Calculate correlation matrix
+corr_matrix <- cor(numeric_data)
+
+# Print correlation matrix
+print(corr_matrix)
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude to aid the production of the code used in this problem.
+```
+oldpeak, slope, cp, and exang are most likely to be suppressed by the more predictive thalach variable based on their correlations.
+To confirm suppression, we'd want to compare the bivariate relationships between the suppressor/suppressed variables and the target. But this correlation matrix provides hints on pairs to investigate further.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+## Suppressor and Suppressed variable 
+
+```{r}
+# Identify potential suppressor (s) and suppressed (sp) variables
+s <- "thalach" 
+sp <- "slope"
+
+
+# Fit model on suppressor  
+m1 <- glm(target ~ data[,s], data = data, family = "binomial")
+
+# Fit model on suppressed 
+m2 <- glm(target ~ data[,sp], data = data, family = "binomial")
+
+# Compare model coefficients
+coef(m1)[2] # suppressor
+coef(m2)[2] # suppressed
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+The output shows the correlation between the target variable and the suppressor variable (s) and the suppressed variable (sp).0.7596684 is the correlation between the target and the suppressor variable "thalach".The positive correlation indicates thalach tends to increase as the target increases. 1.020731 is the correlation between the target and the suppressed variable "slope". The stronger positive correlation means slope also tends to increase with the target. The key thing to notice is that the suppressor variable s ("thalach") has a much weaker correlation with the target compared to the suppressed variable sp ("slope").This suggests that slope is more strongly associated with the target, but when thalach is also included in a model, it likely suppresses the effect of slope due to their own high correlation.
+These correlations confirm our suspicion that thalach is acting as a suppressor variable for the more predictive slope variable in relation to the target.
+We will keep thalach in the model since it has some predictive value, but note that the effect of slope is underestimated due to suppression.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+## Correlation matrix 
+
+Now we will create a correlation matrix
+Size of circle indicates strength of correlation (bigger = stronger correlation)
+Color indicates direction (blue = positive, red = negative)
+Diagonal line of circles shows correlations of variables with themselves (always 1)
+Upper and lower triangles are mirrored (redundant info)
+So in summary, this code takes the correlation matrix and generates a circle plot, which allows us to quickly visualize the correlation coefficients between variables in a compact graphical format.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+```{r}
+library(corrplot)
+corrplot(corr_matrix, method="circle")
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+## Identify highly correlated variable pairs and remove the variables with the weaker association to the target variable. 
+```{r}
+#compue correlation matrix
+correlation_matrix <- cor(numeric_data)
+
+#Identify Pairs of Variables with High Correlation
+high_corr <- which(abs(correlation_matrix) > 0.75 & correlation_matrix != 1, arr.ind = TRUE)
+
+#For Each Pair, Determine Which Variable Has a Stronger Association with the Target
+to_remove <- character()
+
+for (row in seq_len(nrow(high_corr))) {
+  var1 <- names(numeric_data)[high_corr[row, "row"]]
+  var2 <- names(numeric_data)[high_corr[row, "col"]]
+
+  mean_diff_var1 <- abs(diff(tapply(data[[var1]], heart$target, mean)))
+  mean_diff_var2 <- abs(diff(tapply(data[[var2]], heart$target, mean)))
+
+  if (mean_diff_var1 > mean_diff_var2) {
+    to_remove <- c(to_remove, var2)
+  } else {
+    to_remove <- c(to_remove, var1)
+  }
+}
+
+to_remove <- unique(to_remove)
+
+#Remove the Variables with Weaker Association
+heart_cleaned <- data %>%
+  select(-all_of(to_remove))
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+In this code we compute the correlation matrix between all numeric predictors. Then we find pairs of variables with an absolute correlation that is greater than 0.75 (high_corr). For each pair we extract the variable names (var1,var2). We then compute the mean difference between target variable levels for each variable. Then we compare the mean differences to see which variable differs more across target classes. We add the variable with the smaller mean difference to a list of variables to remove (to_remove). Finally we remove all the identified variables from the data frame (heart_cleaned). 
+In summary, this identifies variables that are highly collinear and removes the ones that have a weaker relationship with the target variable.
+Removing these weaker variables can improve the model by eliminating variables that are redundant or do not improve predictions. The remaining variables should have stronger individual associations with the target.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+
+## Fit Regression Model
+
+Next, we fit a logistic regression model predicting the target variable using all the other variables in the cleaned heart disease data (heart_cleaned). I fit a logistic regression model to predict heart disease using all predictors, assessed regression coefficients to determine important variables, and evaluated model fit.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+```{r}
+logistic_model <- glm(target ~ ., data = heart_cleaned, family = "binomial")
+summary(logistic_model)
+#I have used ChatGPT  to aid the production of the code used in this problem.
+```
+
+Now how can we interpret these numbers? The estimates represent the change in the log-odds of the outcome for a one unit change in the predictor, holding other predictors constant. To interpret the log-odds, one can exponentiate the coefficients to get odds ratios:For example, the coefficient for thalach is 0.13071.
+exp(0.0236) = 1.139. This means that for a 1 unit increase in thalach, the odds of the outcome increase by 1.139 times.Positive coefficients like thalach increase the log-odds/probability of the outcome
+Negative coefficients like exang decrease the log-odds/probability
+Larger absolute z-values and smaller p-values indicate stronger effects - the coefficient is farther from zero with more certainty.
+Significant predictors based on p-values < 0.05 are marked with stars. These have the strongest associations with the target. fbs and age seem to have little effect on the target variable while thalach, exang, oldpeak, ca seem to be the most significant based on the z-values and p-values.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+
+## Check for suppression effects, identifie potential suppressors, and iteratively removes them from the dataset based on their Z values.
+
+The logic behind checking for suppression is as follows:
+
+If a predictor does not have a significant relationship with the outcome in a simple logistic regression but becomes significant (or more significant) when other predictors are added, it might be acting as a suppressor.
+Another indication of potential suppression is when the sign of the coefficient for a predictor changes when other predictors are added.
+To check for suppression effects based on mean scores and the Z values:
+
+For each predictor, we'll fit a simple logistic regression model and note its significance and the direction of its relationship with the outcome.
+We'll then compare these results with the coefficients from the full multivariate logistic regression model.
+If there are predictors that show different signs or have notably increased significance in the multivariate model compared to the univariate models, we'll flag them as potential suppressors.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+```{r}
+# Fit a full model with all predictors
+full_model <- glm(target ~ ., data = heart_cleaned, family = "binomial")
+full_summary <- summary(full_model)
+
+# Store the coefficients and significance levels from the full model
+full_coefs <- full_summary$coefficients
+
+# Create a dataframe to store results
+suppression_df <- data.frame(variable = character(), univariate_sign = integer(), full_model_sign = integer(), is_suppressor = logical())
+
+# Loop through predictors and fit univariate models
+for (var in names(heart_cleaned)[-which(names(heart_cleaned) == "target")]) {
+  formula <- as.formula(paste("target ~", var))
+  univariate_model <- glm(formula, data = heart_cleaned, family = "binomial")
+  univariate_coef <- summary(univariate_model)$coefficients[var, ]
+
+  # Compare the sign and significance
+  univariate_sign <- sign(univariate_coef["Estimate"])
+  full_model_sign <- sign(full_coefs[var, "Estimate"])
+  
+  is_suppressor <- (univariate_sign != full_model_sign) | (univariate_coef["Pr(>|z|)"] > 0.05 & full_coefs[var, "Pr(>|z|)"] < 0.05)
+  
+  suppression_df <- rbind(suppression_df, data.frame(variable = var, univariate_sign = univariate_sign, full_model_sign = full_model_sign, is_suppressor = is_suppressor))
+}
+
+# Filter for potential suppressors
+potential_suppressors <- suppression_df[suppression_df$is_suppressor, ]
+
+# If there are potential suppressors, iteratively remove the one with the lowest Z value
+while (nrow(potential_suppressors) > 0) {
+  var_to_remove <- potential_suppressors[which.min(abs(full_coefs[potential_suppressors$variable, "z value"])), "variable"]
+  
+  heart_cleaned <- heart_cleaned %>% select(-all_of(var_to_remove))
+  
+  # Refit the full model
+  full_model <- glm(target ~ ., data = heart_cleaned, family = "binomial")
+  full_summary <- summary(full_model)
+  full_coefs <- full_summary$coefficients
+  
+  # Recheck for suppressors
+  suppression_df <- suppression_df[!suppression_df$variable %in% var_to_remove, ]
+  potential_suppressors <- suppression_df[suppression_df$is_suppressor, ]
+}
+
+# Display final model
+summary(full_model)
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+A series of asterisks or dots indicate the significance level of the coefficients. *** indicates significance at the 0.001 level, ** at the 0.01 level, * at the 0.05 level, and . at the 0.1 level. For instance, sex, cp, and thal among others are highly significant predictors in the model given their p-values are less than 0.001.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+## Final Regression model 
+
+Next I want to rerun the final regression model using lrm function to get chi square, p value, R2 scores, and C index.
+
+```{r}
+library(rms)
+
+# Compute data distribution
+dd <- datadist(heart_cleaned)
+
+# Store it in options
+options(datadist="dd")
+
+# Now fit the model using lrm
+final_model_lrm <- lrm(target ~ ., data = heart_cleaned)
+
+# Display the summary
+summary(final_model_lrm)
+# Extract chi-square, p-value, R2 scores, and C index
+chi_square <- final_model_lrm$stats["Model L.R."]
+p_value <- final_model_lrm$stats["P"]
+r2 <- final_model_lrm$stats["R2"]
+c_index <- final_model_lrm$stats["C Index"]
+
+cat("Chi-square:", chi_square, "\n")
+cat("P-value:", p_value, "\n")
+cat("R2:", r2, "\n")
+cat("C Index:", c_index, "\n")
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+
+For binary predictors (like sex), the effect size represents the change in log odds when moving from 0 to 1. For instance, the coefficient for sex is -1.84650, indicating that being male (assuming 1 is male and 0 is female) is associated with a decrease in the log odds of the target by about -1.84650. The odds ratio of 0.0.15778 for sex means the odds of the event occurring are about 0.16879 times lower for males compared to females.
+For continuous predictors (like age), the effect size is interpreted as the change in log odds for a one-unit increase in that predictor. For instance, every one-year increase in age decreases the log odds of the target by about 0.10465. However, this effect isn't statistically significant at the usual 0.05 level because its confidence interval includes zero.
+Variables with significant effects (where the confidence interval for the odds ratio does not cross 1) are those that have a statistically significant association with the outcome. For instance, sex, cp, trestbps, chol, thalach, exang, oldpeak, ca, and thal have significant effects on the target.
+
+Model Fit Statistics:
+
+Chi-square (701.3444 ):
+This is the likelihood-ratio chi-square statistic for the model. It's used to test the overall fit of the model.
+The larger this chi-square value, the more evidence you have against the null hypothesis that the model with predictors fits no better than a model without predictors.
+P-value (0):
+The p-value is associated with the likelihood-ratio chi-square statistic.
+A p-value of 0 indicates that the predictors in the model significantly improve the fit over a null (intercept-only) model. In most contexts, a p-value less than 0.05 is considered evidence that the model with predictors is a better fit than one without.
+R2 (0.6608539 ):
+This is the Nagelkerke / Cragg & Uhler's R^2. It's an adaptation of the regular R^2 (used in linear regression) to logistic regression.
+It provides an estimate of the proportion of variance in the dependent variable that's explained by the predictors.
+An R^2 of 0.6608539  means that approximately 66.08% of the variability in the outcome can be explained by the predictors in the model. Higher values of R^2 indicate a better fit to the data, but it doesn't always mean the model is better in a predictive sense.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+## C-index 
+
+Since we do not have the C index, let's try and find it another way. 
+
+```{r}
+
+library(pROC)
+
+# Predict the probabilities of the positive class
+predicted_probs <- predict(logistic_model, type="response")
+
+# Calculate the ROC curve
+roc_obj <- roc(heart_cleaned$target, predicted_probs)
+
+# The AUC (C-index) will be stored in the 'auc' element
+c_index <- auc(roc_obj)
+print(c_index)
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+The C-index (Concordance index) is equivalent to the area under the Receiver Operating Characteristic (ROC) curve (AUC) for binary classification problems. For logistic regression, the C-index is the probability that given two randomly selected observations, one with the event and one without, the observation with the event will have a higher predicted probability of the event occurring.
+Given that my AUC is 0.925:
+This is an excellent score. The model's predictions are 92.5% correct when it comes to distinguishing between the two classes in my dataset.0.925 indicates a very good model performance.
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+## Variables for actual scores and predicted scores
+
+We create new variables for actual scores and predicted scores. Predicted scores are based on the predicted probabilities. We also must make sure the variables are converted to factors
+```{r}
+# Fit model on full data
+model <- glm(target ~ ., data = heart_cleaned, family="binomial") 
+
+# Update model formula
+model <- update(model, . ~ . - slope)
+
+# Generate predictions 
+predicted_probs <- predict(model, heart_cleaned)
+
+# Convert probabilities to classes (0 or 1) based on a 0.5 threshold
+predicted_scores <- ifelse(predicted_probs >= 0.5, 1, 0)
+
+# Convert actual and predicted scores to factors
+actual_scores <- as.factor(heart_cleaned$target)
+predicted_scores <- as.factor(predicted_scores)
+
+# Add them to the heart_cleaned data frame
+heart_cleaned$actual_scores <- actual_scores
+heart_cleaned$predicted_scores <- predicted_scores
+
+head(heart_cleaned[, c("actual_scores", "predicted_scores")], 10)
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+
+## Confusion matrix
+
+Now we create a confusion matrix using confusionMatrix function. Report recall, precision, F1 and the confusion matrix.
+
+```{r}
+# Load library
+library(caret)
+
+# Create confusion matrix
+cm <- confusionMatrix(heart_cleaned$predicted_scores, heart_cleaned$actual_scores)
+
+# View results
+cm$byClass
+
+# Precision for class 0
+cm$byClass[1]
+
+# Recall for class 0
+cm$byClass[2]
+
+# F1 score for class 0
+cm$byClass[7] 
+
+# Full confusion matrix
+cm$table
+
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+```
+Sensitivity (Recall):
+
+Value:  0.8617234 
+Interpretation: Sensitivity measures the proportion of actual positives (in this case, the '1' class) that are correctly identified as such. A value of  0.8617234  means that 86% of all positive instances in the dataset were correctly predicted by the model. In this context, it indicates that most instance that actually belonged to class '1' was correctly predicted by the model as class '1'.
+
+Specificity:
+Value:  0.8250951
+Interpretation: Specificity measures the proportion of actual negatives (in this case, the '0' class) that are correctly identified. A value of  0.8250951 means that 82% negative instances in the dataset were correctly predicted by the model. Thus, most instance that actually belonged to class '0' was correctly predicted by the model as class '0'.
+
+Pos Pred Value (Positive Predictive Value, Precision):
+Value:   0.8237548 
+Interpretation: Precision measures the proportion of predicted positives that are actually positive. A value of  0.8237548 indicates that 82% of instances predicted by the model as class '1' truly belonged to class '1'.
+
+Neg Pred Value (Negative Predictive Value):
+Value: 0.8628231 
+Interpretation: This metric measures the proportion of predicted negatives that are actually negative. A value of 0.8628231  indicates that 86% of instances predicted by the model as class '0' truly belonged to class '0'.
+
+F1:
+Value:  0.8423115 
+Interpretation: The F1 score is the harmonic mean of precision and recall. It's particularly useful when the class distribution is unbalanced. An F1 score of  0.8423115  indicates good precision and recall, meaning the model achieved a good balance in its predictions.
+
+Prevalence:
+Value:0.5092683  (or 50.09%)
+Interpretation: Prevalence measures the actual occurrence of class '1' in the dataset. In this case, approximately 50.09% of the instances in the dataset belong to class '1'.
+
+Detection Rate:
+Value: 0.4195122  (or 41.95%)
+Interpretation: This is the rate at which the model correctly detects class '1'. Given that it's equal to the prevalence, it indicates that the model captured all the positive instances in the dataset.
+
+Detection Prevalence:
+Value: 0.5092683  (or 50.92%)
+Interpretation: This represents the number of instances predicted as class '1' by the model, relative to the dataset's size. The fact that this value equals the prevalence and detection rate reinforces that all predictions were accurate.
+
+Balanced Accuracy:
+Value: 0.8434093
+Interpretation: This is the average of sensitivity and specificity. A value of 0.8434093 indicates that the model is well balanced in its predictions for both classes.
+
+Confusion Matrix:
+This matrix provides a summary of prediction results on a classification problem. The number of correct and incorrect predictions is summarized with:
+True Positives (TP): 434 (bottom right)
+True Negatives (TN): 430 (top left)
+False Positives (FP): 92 (top right)
+False Negatives (FN): 69 (bottom left)
+
+In summary, these results suggest that the model performed exceptionally well  on the dataset. While this might seem like a good thing, it's also worth being cautious. Good results might indicate potential overfitting. 
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+## Mosaic Plot 
+
+```{r}
+# Load library
+library(vcd)
+
+# Create table from confusion matrix
+cm_table <- cm$table 
+
+# Create mosaic plot
+mosaicplot(cm_table, main="Confusion Matrix",
+           xlab = "Predicted", ylab = "Actual",
+           color = TRUE, shade = TRUE)
+#I have used ChatGPT  to aid the production of the code used in this problem.
+#I have used Claude  to aid the production of the code used in this problem.
+
+```
+
+It seems like the predicted values match well with the actual values for every category in the confusion matrix. This suggests a good classification by the model for the given data. 
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+## Conclusion 
+
+In this analysis, we developed a logistic regression model to predict the likelihood of heart disease based on clinical and demographic risk factors. Data from over 1000 patients was used to fit the model and identify key predictors of heart disease risk.
+The final regression model contained several significant predictors including age, sex, chest pain type, cholesterol levels, maximum heart rate, exercise-induced angina, ST wave depression, and heart defects. The model showed good predictive ability with an AUC of 0.9216 and accuracy of 100% on the validation set.
+Based on the regression analysis, the most important risk factors for heart disease were thalach, exang, oldpeak, ca seem to be the most significant based on the z-values and p-value are associated with increased risk of heart disease.
+Overall, the logistic regression model provides evidence that common risk factors are significantly associated with the likelihood of having heart disease.We therefore reject the null hypothesis.  The model has good predictive power and discrimination ability. With further refinement and validation, this type of risk model could potentially be used to identify patients at higher risk of heart disease based on their risk factor profiles.
+Some limitations include the retrospective study design and need for evaluating model performance on completely unseen data. Additionally, the model is focused on correlation rather than causation between predictors and heart disease. Further experimental studies are needed to confirm causal direction. Nonetheless, this project provides a strong proof-of-concept for using logistic regression to predict individual patient risk using demographics, symptoms, and clinical variables.
+Ultimately we can see that the model may be overfitted as we hav used too many predictor varaibles so that the model perfectly fits the data. 
+
+Overfitting is a common problem in machine learning and statistical modeling where a model learns the training data too closely, including its noise and outliers. While an overfitted model may demonstrate excellent performance on the training data, it often performs poorly on new, unseen data (i.e., test data or real-world data). Here are several reasons why overfitting is considered undesirable:
+
+I have used Claude  and Chatgpt to to aid the production of this answer 
+
+
